@@ -1,12 +1,14 @@
 use axum::Router;
 use axum::routing::{get, post};
-use axum::extract::Extension;
+use axum::extract::{Extension, Path};
+use axum::response::Redirect;
 use axum::response::Json as RespJson;
 use axum::extract::Json as ExtJson;
+use log::{debug, info};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
 use serde::{Serialize, Deserialize};
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -20,11 +22,12 @@ async fn main() {
 
     let mgr = SqliteConnectionManager::file(db_path);
     let pool = Pool::new(mgr).expect("new pool");
-    let shared_pool = Arc::new(pool);
+
+    init_database(pool.clone());
 
     // build our application with a single route
     let app = Router::new()
-    .layer(axum::AddExtensionLayer::new(shared_pool))
+    .layer(axum::AddExtensionLayer::new(pool.clone()))
     .route("/short", post(short))
     .route("/expand", post(expand))
     .route("/redirect/:id", get(redirect));
@@ -36,7 +39,14 @@ async fn main() {
         .unwrap();
 }
 
-#[derive(Deserialize)]
+fn init_database(pool: Pool<SqliteConnectionManager>){
+    debug!("init_database start");
+    let conn = pool.get().expect("get DB connection");
+    conn.execute("CREATE TABLE IF NOT EXISTS idurlmap (id TEXT, url TEXT)", params![]).expect("create table");
+    debug!("init_database finish");
+}
+
+#[derive(Debug, Deserialize)]
 struct ShortRequest {
     url: String,
 }
@@ -46,11 +56,14 @@ struct ShortResponse {
     id: String,
 }
 
-async fn short(Extension(shared_pool): Extension<Arc<Pool<SqliteConnectionManager>>>, ExtJson(payload): ExtJson<ShortRequest>) -> RespJson<ShortResponse> {
-    unimplemented!()
+async fn short(Extension(pool): Extension<Pool<SqliteConnectionManager>>, ExtJson(payload): ExtJson<ShortRequest>) -> RespJson<ShortResponse> {
+    info!("short {:?}", payload);
+    let conn = pool.get().expect("get DB connection");
+    conn.execute("INSERT INTO idurlmap (id, url) VALUES(?, ?)", &["", ""]);
+    RespJson(ShortResponse{id:"abcd".to_string()})
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ExpandRequest {
     id: String,
 }
@@ -60,12 +73,18 @@ struct ExpandResponse {
     url: String,
 }
 
-async fn expand(Extension(shared_pool): Extension<Arc<Pool<SqliteConnectionManager>>>, ExtJson(payload): ExtJson<ExpandRequest>) -> RespJson<ExpandResponse>{
-    unimplemented!()
+async fn expand(Extension(pool): Extension<Pool<SqliteConnectionManager>>, ExtJson(payload): ExtJson<ExpandRequest>) -> RespJson<ExpandResponse>{
+    info!("expand {:?}", payload);
+    let conn = pool.get().expect("get DB connection");
+    conn.execute("SELECT url FROM idurlmap WHERE id = ?", &[""]);
+    RespJson(ExpandResponse{url:"http://www.example.com".to_string()})
 }
 
-async fn redirect(Extension(shared_pool): Extension<Arc<Pool<SqliteConnectionManager>>>) {
-    unimplemented!()
+async fn redirect(Extension(pool): Extension<Pool<SqliteConnectionManager>>, Path(id): Path<String>) -> Redirect {
+    info!("redirect {}", id);
+    let conn = pool.get().expect("get DB connection");
+    conn.execute("SELECT url FROM idurlmap WHERE id = ?", &[""]);
+    Redirect::permanent("http://www.example.com".parse().unwrap())
 }
 
 fn must_env_var(key:&str) -> String {
