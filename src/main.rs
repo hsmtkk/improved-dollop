@@ -58,9 +58,11 @@ struct ShortResponse {
 
 async fn short(Extension(pool): Extension<Pool<SqliteConnectionManager>>, ExtJson(payload): ExtJson<ShortRequest>) -> RespJson<ShortResponse> {
     info!("short {:?}", payload);
+    let id = nanoid::nanoid!(8);
     let conn = pool.get().expect("get DB connection");
-    conn.execute("INSERT INTO idurlmap (id, url) VALUES(?, ?)", &["", ""]);
-    RespJson(ShortResponse{id:"abcd".to_string()})
+    let rows = conn.execute("INSERT INTO idurlmap (id, url) VALUES(?, ?)", params![id, payload.url]).expect("insert");
+    info!("inserted {} rows", rows);
+    RespJson(ShortResponse{id})
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,15 +78,15 @@ struct ExpandResponse {
 async fn expand(Extension(pool): Extension<Pool<SqliteConnectionManager>>, ExtJson(payload): ExtJson<ExpandRequest>) -> RespJson<ExpandResponse>{
     info!("expand {:?}", payload);
     let conn = pool.get().expect("get DB connection");
-    conn.execute("SELECT url FROM idurlmap WHERE id = ?", &[""]);
-    RespJson(ExpandResponse{url:"http://www.example.com".to_string()})
+    let url: String = conn.query_row("SELECT url FROM idurlmap WHERE id = ?", params![payload.id], |r| r.get(0)).expect("select");
+    RespJson(ExpandResponse{url})
 }
 
 async fn redirect(Extension(pool): Extension<Pool<SqliteConnectionManager>>, Path(id): Path<String>) -> Redirect {
     info!("redirect {}", id);
     let conn = pool.get().expect("get DB connection");
-    conn.execute("SELECT url FROM idurlmap WHERE id = ?", &[""]);
-    Redirect::permanent("http://www.example.com".parse().unwrap())
+    let url: String = conn.query_row("SELECT url FROM idurlmap WHERE id = ?", params![id], |r| r.get(0)).expect("select");
+    Redirect::permanent(url.parse().unwrap())
 }
 
 fn must_env_var(key:&str) -> String {
