@@ -1,0 +1,25 @@
+---
+name: client
+args:
+  - host:
+      long: host
+      takes_value: true
+      default_value: localhost
+  - port:
+      long: port
+      takes_value: true
+      default_value: "8000"
+  - https:
+      long: https
+      help: enable HTTPS
+subcommands:
+  - short:
+      args:
+        - url:
+            required: true
+            help: URL
+  - expand:
+      args:
+        - id:
+            required: true
+            help: short ID
